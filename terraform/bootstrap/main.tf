@@ -125,10 +125,16 @@ data "aws_iam_policy_document" "github_trust" {
       values   = ["sts.amazonaws.com"]
     }
     # Only workflows in THIS repository can assume the role.
+    # GitHub now puts immutable owner/repo IDs in the subject ("repo:owner@123/name@456:ref:...").
+    # Matching on the IDs means a different repo that later takes the same name can't get in.
+    # The name-only pattern is kept for accounts still using the older subject format.
     condition {
       test     = "StringLike"
       variable = "token.actions.githubusercontent.com:sub"
-      values   = ["repo:${var.github_repo}:*"]
+      values = compact([
+        var.github_repo_id_subject == "" ? "" : "repo:${var.github_repo_id_subject}:*",
+        "repo:${var.github_repo}:*",
+      ])
     }
   }
 }
