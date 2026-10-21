@@ -1,0 +1,113 @@
+# Application pipeline
+#   test -> build image -> scan image with Trivy -> push to ECR -> deploy to ECS (dev)
+name: Deploy app
+
+on:
+  push:
+    branches: [main]
+    paths: ["app/**", ".github/workflows/deploy.yml"]
+  pull_request:
+    paths: ["app/**", ".github/workflows/deploy.yml"]
+  workflow_dispatch:
+
+permissions:
+  id-token: write
+  contents: read
+
+concurrency:
+  group: deploy-dev
+  cancel-in-progress: false
+
+env:
+  AWS_REGION: us-east-1
+  ECR_REPOSITORY: portfolio-app-dev
+  ECS_CLUSTER: portfolio-dev-cluster
+  ECS_SERVICE: portfolio-dev-service
+  TASK_FAMILY: portfolio-dev-app
+  CONTAINER_NAME: app
+
+jobs:
+  test:
+    name: Unit tests
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: app
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - run: pip install -r requirements.txt -r requirements-dev.txt
+      - run: python -m pytest -q
+
+  build-scan-deploy:
+    name: Build, scan, deploy
+    needs: test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Build image
+        run: docker build -t app:${{ github.sha }} app
+
+      - name: Scan image with Trivy (fail on fixable HIGH/CRITICAL)
+        uses: aquasecurity/trivy-action@v0.36.0
+        with:
+          image-ref: app:${{ github.sha }}
+          severity: HIGH,CRITICAL
+          ignore-unfixed: true
+          exit-code: "1"
+          format: table
+
+      # Pull requests stop here: tested and scanned, but not deployed.
+      - name: Configure AWS credentials (OIDC, no stored keys)
+        if: github.event_name != 'pull_request'
+        uses: aws-actions/configure-aws-credentials@v5
+        with:
+          role-to-assume: ${{ vars.AWS_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Log in to Amazon ECR
+        if: github.event_name != 'pull_request'
+        id: ecr
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Push image (tagged with the commit SHA)
+        if: github.event_name != 'pull_request'
+        id: push
+        run: |
+          IMAGE="${{ steps.ecr.outputs.registry }}/${ECR_REPOSITORY}"
+          docker tag app:${{ github.sha }} "$IMAGE:${{ github.sha }}"
+          docker tag app:${{ github.sha }} "$IMAGE:latest"
+          docker push "$IMAGE:${{ github.sha }}"
+          docker push "$IMAGE:latest"
+          echo "image=$IMAGE:${{ github.sha }}" >> "$GITHUB_OUTPUT"
+
+      - name: Download current task definition
+        if: github.event_name != 'pull_request'
+        run: |
+          aws ecs describe-task-definition --task-definition "$TASK_FAMILY" \
+            --query taskDefinition > task-definition.json
+
+      - name: Point the task definition at the new image
+        if: github.event_name != 'pull_request'
+        id: render
+        uses: aws-actions/amazon-ecs-render-task-definition@v1
+        with:
+          task-definition: task-definition.json
+          container-name: ${{ env.CONTAINER_NAME }}
+          image: ${{ steps.push.outputs.image }}
+
+      - name: Deploy to ECS and wait until healthy
+        if: github.event_name != 'pull_request'
+        uses: aws-actions/amazon-ecs-deploy-task-definition@v2
+        with:
+          task-definition: ${{ steps.render.outputs.task-definition }}
+          cluster: ${{ env.ECS_CLUSTER }}
+          service: ${{ env.ECS_SERVICE }}
+          wait-for-service-stability: true
+
+      - name: Summary
+        if: github.event_name != 'pull_request'
+        run: echo "Deployed ${{ steps.push.outputs.image }} to $ECS_SERVICE" >> "$GITHUB_STEP_SUMMARY"
