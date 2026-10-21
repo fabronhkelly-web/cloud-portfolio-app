@@ -116,10 +116,10 @@ resource "aws_cloudwatch_dashboard" "this" {
       {
         type = "metric", x = 12, y = 0, width = 12, height = 6
         properties = {
-          title  = "Response time (seconds, p95)"
-          region = data.aws_region.current.region
-          stat   = "p95"
-          period = 60
+          title   = "Response time (seconds, p95)"
+          region  = data.aws_region.current.region
+          stat    = "p95"
+          period  = 60
           metrics = [["AWS/ApplicationELB", "TargetResponseTime", "LoadBalancer", var.alb_arn_suffix]]
         }
       },

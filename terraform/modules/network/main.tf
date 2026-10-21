@@ -34,7 +34,7 @@ resource "aws_subnet" "public" {
   count             = var.az_count
   vpc_id            = aws_vpc.this.id
   availability_zone = local.azs[count.index]
-  cidr_block        = cidrsubnet(var.vpc_cidr, 8, count.index)        # 10.x.0.0/24, 10.x.1.0/24
+  cidr_block        = cidrsubnet(var.vpc_cidr, 8, count.index) # 10.x.0.0/24, 10.x.1.0/24
   tags              = { Name = "${var.name}-public-${local.azs[count.index]}", Tier = "public" }
 }
 
@@ -42,7 +42,7 @@ resource "aws_subnet" "private" {
   count             = var.az_count
   vpc_id            = aws_vpc.this.id
   availability_zone = local.azs[count.index]
-  cidr_block        = cidrsubnet(var.vpc_cidr, 8, count.index + 10)   # 10.x.10.0/24, 10.x.11.0/24
+  cidr_block        = cidrsubnet(var.vpc_cidr, 8, count.index + 10) # 10.x.10.0/24, 10.x.11.0/24
   tags              = { Name = "${var.name}-private-${local.azs[count.index]}", Tier = "private" }
 }
 

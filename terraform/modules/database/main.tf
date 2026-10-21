@@ -39,9 +39,9 @@ resource "aws_db_instance" "this" {
   auto_minor_version_upgrade          = true
   copy_tags_to_snapshot               = true
 
-  backup_retention_period = var.backup_retention_days
-  deletion_protection     = var.deletion_protection
-  skip_final_snapshot     = !var.deletion_protection
+  backup_retention_period   = var.backup_retention_days
+  deletion_protection       = var.deletion_protection
+  skip_final_snapshot       = !var.deletion_protection
   final_snapshot_identifier = var.deletion_protection ? "${var.name}-db-final" : null
-  apply_immediately       = true
+  apply_immediately         = true
 }
