@@ -103,7 +103,6 @@ resource "aws_iam_role" "task" {
 # ---------------------------------------------------------------------------
 resource "aws_cloudwatch_log_group" "app" {
   #checkov:skip=CKV_AWS_158:Default CloudWatch encryption is used; a customer-managed KMS key adds cost
-  #checkov:skip=CKV_AWS_338:Short retention keeps a portfolio project cheap
   name              = "/ecs/${var.name}"
   retention_in_days = var.log_retention_days
 }
@@ -128,10 +127,14 @@ resource "aws_ecs_task_definition" "app" {
   }
 
   container_definitions = jsonencode([{
-    name         = local.container_name
-    image        = "${var.image_repository_url}:${var.image_tag}"
-    essential    = true
-    portMappings = [{ containerPort = var.container_port, protocol = "tcp" }]
+    name      = local.container_name
+    image     = "${var.image_repository_url}:${var.image_tag}"
+    essential = true
+    # Read-only root filesystem (NIST AC-6, CM-7; Security Hub ECS.5). Gunicorn keeps its
+    # worker heartbeat files in /dev/shm (memory) because it can no longer write to /tmp.
+    readonlyRootFilesystem = true
+    command                = ["gunicorn", "--bind", "0.0.0.0:${var.container_port}", "--workers", "2", "--worker-tmp-dir", "/dev/shm", "--access-logfile", "-", "app:app"]
+    portMappings           = [{ containerPort = var.container_port, protocol = "tcp" }]
     environment = [
       { name = "APP_ENV", value = var.environment },
       { name = "DB_HOST", value = var.db_host },

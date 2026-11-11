@@ -21,7 +21,8 @@ variable "single_nat_gateway" {
 }
 
 variable "log_retention_days" {
+  # 365 days meets NIST AU-11 and Security Hub CloudWatch.16
   description = "How long to keep VPC flow logs"
   type        = number
-  default     = 14
+  default     = 365
 }

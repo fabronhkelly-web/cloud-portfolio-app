@@ -1,8 +1,9 @@
 # CloudTrail: an audit trail of every action in the account (NIST AU-2, AU-9, AU-12)
 
 locals {
-  trail_name = "portfolio-trail"
-  trail_arn  = "arn:aws:cloudtrail:${local.region}:${local.account_id}:trail/${local.trail_name}"
+  trail_name      = "portfolio-trail"
+  trail_arn       = "arn:aws:cloudtrail:${local.region}:${local.account_id}:trail/${local.trail_name}"
+  trail_log_group = "/aws/cloudtrail/${local.trail_name}"
 }
 
 # Customer-managed KMS key that encrypts the CloudTrail logs (NIST SC-12, SC-13, SC-28, AU-9)
@@ -40,6 +41,16 @@ resource "aws_kms_key" "cloudtrail" {
         Resource  = "*"
         Condition = {
           StringEquals = { "aws:SourceArn" = local.trail_arn }
+        }
+      },
+      {
+        Sid       = "CloudWatchLogsEncryptsTrailLogGroup"
+        Effect    = "Allow"
+        Principal = { Service = "logs.${local.region}.amazonaws.com" }
+        Action    = ["kms:Encrypt*", "kms:Decrypt*", "kms:ReEncrypt*", "kms:GenerateDataKey*", "kms:Describe*"]
+        Resource  = "*"
+        Condition = {
+          ArnEquals = { "kms:EncryptionContext:aws:logs:arn" = "arn:aws:logs:${local.region}:${local.account_id}:log-group:${local.trail_log_group}" }
         }
       },
       {
@@ -180,7 +191,6 @@ resource "aws_s3_bucket_policy" "trail" {
 
 resource "aws_cloudtrail" "main" {
   #checkov:skip=CKV_AWS_252:SNS notifications for each new log file are not needed
-  #checkov:skip=CKV2_AWS_10:CloudWatch Logs delivery is not needed; Security Hub and GuardDuty watch for threats
   name                          = local.trail_name
   s3_bucket_name                = aws_s3_bucket.trail.id
   is_multi_region_trail         = true
@@ -188,5 +198,46 @@ resource "aws_cloudtrail" "main" {
   enable_log_file_validation    = true
   kms_key_id                    = aws_kms_key.cloudtrail.arn
 
-  depends_on = [aws_s3_bucket_policy.trail]
+  # Also stream every event to CloudWatch Logs so it can be searched and alarmed on (NIST AU-6, SI-4)
+  cloud_watch_logs_group_arn = "${aws_cloudwatch_log_group.trail.arn}:*"
+  cloud_watch_logs_role_arn  = aws_iam_role.trail_to_cloudwatch.arn
+
+  depends_on = [aws_s3_bucket_policy.trail, aws_iam_role_policy.trail_to_cloudwatch]
+}
+
+# ---------------------------------------------------------------------------
+# CloudWatch Logs copy of the trail (fixes Security Hub CloudTrail.5)
+# ---------------------------------------------------------------------------
+resource "aws_cloudwatch_log_group" "trail" {
+  name              = local.trail_log_group
+  retention_in_days = 365 # keep audit records one year (NIST AU-11)
+  kms_key_id        = aws_kms_key.cloudtrail.arn
+}
+
+# CloudTrail needs a role it can assume to write into the log group
+resource "aws_iam_role" "trail_to_cloudwatch" {
+  name = "portfolio-cloudtrail-to-cloudwatch"
+  assume_role_policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Effect    = "Allow"
+      Principal = { Service = "cloudtrail.amazonaws.com" }
+      Action    = "sts:AssumeRole"
+      Condition = { StringEquals = { "aws:SourceArn" = local.trail_arn } }
+    }]
+  })
+}
+
+# Least privilege: it can only create streams and write events in this one log group
+resource "aws_iam_role_policy" "trail_to_cloudwatch" {
+  name = "write-trail-log-group"
+  role = aws_iam_role.trail_to_cloudwatch.id
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Effect   = "Allow"
+      Action   = ["logs:CreateLogStream", "logs:PutLogEvents"]
+      Resource = "${aws_cloudwatch_log_group.trail.arn}:*"
+    }]
+  })
 }
