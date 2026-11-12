@@ -7,7 +7,7 @@ Every exception is written down here and in the code, never silently ignored.
 - **System:** cloud-portfolio-app (dev), AWS us-east-1
 - **Owner:** Fabron Kelly
 - **Last reviewed:** 2026-11-11
-- **Security Hub score (NIST 800-53 Rev 5):** 88% (261/297) before the 2026-11-11 fixes, 90% (266/297) after
+- **Security Hub score (NIST 800-53 Rev 5):** 84% (246/297) at the first scan, 88% (261/297) after the account cleanup, 90% (266/297) after the 2026-11-11 fixes
 
 ## 1. AWS Security Hub (NIST 800-53 Rev 5) findings
 
