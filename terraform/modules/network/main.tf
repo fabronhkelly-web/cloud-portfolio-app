@@ -97,7 +97,6 @@ resource "aws_route_table_association" "private" {
 # ---------------------------------------------------------------------------
 resource "aws_cloudwatch_log_group" "flow_logs" {
   #checkov:skip=CKV_AWS_158:Default CloudWatch encryption is used; a customer-managed KMS key adds cost
-  #checkov:skip=CKV_AWS_338:Short retention keeps a portfolio project cheap
   name              = "/vpc/${var.name}/flow-logs"
   retention_in_days = var.log_retention_days
 }

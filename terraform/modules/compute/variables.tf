@@ -78,8 +78,9 @@ variable "db_secret_arn" {
 }
 
 variable "log_retention_days" {
+  # 365 days meets NIST AU-11 and Security Hub CloudWatch.16
   type    = number
-  default = 14
+  default = 365
 }
 
 variable "deletion_protection" {

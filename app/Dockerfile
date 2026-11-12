@@ -21,4 +21,5 @@ RUN useradd --uid 10001 --no-create-home appuser
 USER 10001
 
 EXPOSE 8080
-CMD ["gunicorn", "--bind", "0.0.0.0:8080", "--workers", "2", "--access-logfile", "-", "app:app"]
+# /dev/shm keeps gunicorn working when ECS mounts the root filesystem read-only
+CMD ["gunicorn", "--bind", "0.0.0.0:8080", "--workers", "2", "--worker-tmp-dir", "/dev/shm", "--access-logfile", "-", "app:app"]
