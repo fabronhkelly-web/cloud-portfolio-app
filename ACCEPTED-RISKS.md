@@ -7,7 +7,7 @@ Every exception is written down here and in the code, never silently ignored.
 - **System:** cloud-portfolio-app (dev), AWS us-east-1
 - **Owner:** Fabron Kelly
 - **Last reviewed:** 2026-11-11
-- **Security Hub score (NIST 800-53 Rev 5):** 88% before the 2026-11-11 fixes; re-measured the next day
+- **Security Hub score (NIST 800-53 Rev 5):** 88% (261/297) before the 2026-11-11 fixes, 90% (266/297) after
 
 ## 1. AWS Security Hub (NIST 800-53 Rev 5) findings
 
@@ -15,7 +15,14 @@ Every exception is written down here and in the code, never silently ignored.
 |---|---|---|---|---|
 | IAM.6 Hardware MFA for root | Critical | IA-2(1), IA-2(2) | A hardware key costs money for a personal lab account | Root has virtual (app) MFA, has no access keys, and is not used day to day; all work uses IAM Identity Center SSO with 8-hour sessions |
 | KMS.3 KMS key pending deletion | Critical | SC-12, SC-28 | Old `tech-challenge-2-eks` key from a finished project, scheduled for deletion on purpose | Clears automatically when deletion completes on 2026-11-28 |
-| EC2.10 No EC2 VPC endpoint (default VPC, portfolio-dev VPC) | Medium | SC-7, AC-4 | Interface endpoints cost about $7+/month each per VPC | App traffic to AWS leaves through a NAT gateway over TLS; the default VPC runs nothing except temporary Packer builds |
+| EC2.10, EC2.55, EC2.56, EC2.57, EC2.58, EC2.60 VPC interface endpoints | Medium | SC-7, AC-4 | Each interface endpoint costs about $7/month per AZ per VPC (well over $100/month for all of them) | App traffic to AWS leaves through a NAT gateway over TLS; the default VPC runs only temporary Packer builds. Findings for the deleted `1pu-vpc` age out automatically |
+| EC2.6 VPC flow logs on the default VPC | Medium | AU-12, SI-4 | The default VPC runs nothing except short Packer builds | The portfolio VPC has flow logs (365 days); CloudTrail records every API call |
+| S3.7, S3.9, S3.11, S3.15, S3.17 extra S3 controls (replication, access logs, event notifications, Object Lock, KMS) | Low/Medium | AU-9, CP-9, SC-28 | Single-region lab; adds cost and complexity | All buckets: versioning, encryption, Block Public Access, TLS-only bucket policy, lifecycle rules. The CloudTrail bucket uses a customer-managed KMS key |
+| RDS.5, RDS.8, RDS.11, RDS.26, RDS.6, RDS.23, RDS.9 dev database settings | Low/Medium | CP-9, CP-10, AU-12, SI-4 | Dev must stay cheap and destroyable (single AZ, 1-day backups, no deletion protection) | Prod settings turn on Multi-AZ, deletion protection and longer backups; the database is encrypted, private-subnet only, and its password lives in Secrets Manager |
+| ELB.1, ELB.5, ELB.6, ELB.16 load balancer (HTTPS, access logs, deletion protection, WAF) | Medium | SC-8, AU-12, SC-7 | No custom domain yet, so no TLS certificate; WAF and access logs add cost | Next step: Route 53 domain + ACM certificate + HTTPS redirect, then AWS WAF |
+| ECR.2, ECR.5, ECS.12 registry and cluster extras | Medium | CM-2, SC-28, SI-4 | Immutable tags block the first "latest" deploy; KMS and Container Insights add cost | The pipeline deploys commit-SHA tags; images are scanned with Trivy and ECR scan on push; CPU/memory alarms watch the service |
+| SNS.1 alert topic KMS encryption | Medium | SC-28 | CloudWatch alarms cannot publish to a topic encrypted with the AWS-managed key | Topic carries alarm text only, no sensitive data |
+| Macie.1 Amazon Macie | Medium | SI-4, RA-5 | Paid service; no sensitive data is stored in S3 | Buckets hold only logs and Terraform state |
 
 ### Fixed on 2026-11-11 (no longer accepted)
 
@@ -26,6 +33,7 @@ Every exception is written down here and in the code, never silently ignored.
 | CloudWatch.16 | App and VPC flow log groups keep logs 365 days (was 14) |
 | ECS.5 | App container runs with a read-only root filesystem; gunicorn uses `/dev/shm` |
 | EC2.15 | Auto-assign public IP turned off on the default VPC subnets; unused `1pu-vpc` deleted |
+| S3.1 (2026-11-12) | S3 Block Public Access turned on for the whole account |
 
 ## 2. DISA RHEL 9 STIG items left open in the Packer image
 
